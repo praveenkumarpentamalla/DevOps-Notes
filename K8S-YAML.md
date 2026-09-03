@@ -2035,3 +2035,662 @@ template:
   metadata.labels
   spec.containers
 ```
+
+
+# Kubernetes YAML — Practice, Debugging, Scenarios & Exam Plan
+
+Companion to `k8s-yaml-mastery.md`. That file is the *reference*. This file is the *workout*.
+
+**How to use this file:** cover the answer with your hand/scroll position before revealing it (`<details>` blocks are collapsed — don't click until you've actually answered). Do sets in order the first time through; once you know your weak areas, jump straight to those categories.
+
+---
+
+## 1. Active Recall Drill Bank
+
+Organized by topic. Answer out loud or on paper before expanding.
+
+### 1.1 — The Universal Formula & 4-Block System
+
+<details><summary>Q1. What are the four blocks, in order, that every manifest starts with?</summary>API → KIND → META → SPEC (apiVersion, kind, metadata, spec)</details>
+<details><summary>Q2. Which field should you never hand-write in a manifest?</summary><code>status</code> — it's populated by the cluster, not the author.</details>
+<details><summary>Q3. Is `metadata.namespace` required?</summary>No — defaults to <code>default</code> if omitted (for namespaced resources only; cluster-scoped kinds like Node, ClusterRole, PV don't have it at all).</details>
+<details><summary>Q4. Name three fields under `metadata` besides `name`.</summary><code>namespace</code>, <code>labels</code>, <code>annotations</code></details>
+
+### 1.2 — Pod & Container Block
+
+<details><summary>Q5. Is `containers` a list or a map? What syntax gives it away?</summary>A list — each entry starts with <code>- </code>.</details>
+<details><summary>Q6. Where do `volumes` live vs `volumeMounts`?</summary><code>volumes</code>: Pod level (<code>spec.volumes</code>, sibling of <code>containers</code>). <code>volumeMounts</code>: per-container (<code>containers[].volumeMounts</code>).</details>
+<details><summary>Q7. Where does `command` go, and what does it override?</summary">Inside a container block (<code>containers[].command</code>); overrides the image's ENTRYPOINT.</details>
+<details><summary>Q8. What's the difference between `env` and `envFrom`?</summary><code>env</code> sets one variable at a time (with optional valueFrom); <code>envFrom</code> bulk-imports every key from a ConfigMap/Secret as env vars.</details>
+<details><summary>Q9. Where do `initContainers` run relative to `containers`?</summary>Before — sequentially, and must all complete successfully before any main container starts.</details>
+<details><summary>Q10. Where does `terminationGracePeriodSeconds` belong — Pod or container level?</summary>Pod level (<code>spec.terminationGracePeriodSeconds</code>).</details>
+
+### 1.3 — Deployment
+
+<details><summary>Q11. Write the three things that define a Deployment, one word each.</summary>replicas + selector + template</details>
+<details><summary>Q12. What must `selector.matchLabels` equal?</summary><code>template.metadata.labels</code> — must match, or the object is rejected at creation.</details>
+<details><summary>Q13. Where does `maxSurge` live, and what does it control?</summary><code>spec.strategy.rollingUpdate.maxSurge</code> — how many extra Pods above <code>replicas</code> are allowed during a rollout.</details>
+<details><summary>Q14. What's the difference between `strategy.type: Recreate` and `RollingUpdate`?</summary><code>Recreate</code> kills all old Pods before creating new ones (downtime); <code>RollingUpdate</code> replaces Pods incrementally (no full downtime).</details>
+
+### 1.4 — Service
+
+<details><summary>Q15. Define `port` vs `targetPort` vs `nodePort` in one line each.</summary><code>port</code>=what other cluster clients use to reach the Service; <code>targetPort</code>=the container's actual listening port; <code>nodePort</code>=port opened on every node's IP (NodePort type only).</details>
+<details><summary>Q16. How do you make a Service headless, and why would you?</summary><code>spec.clusterIP: None</code> — used so DNS resolves to individual Pod IPs instead of a load-balanced VIP (StatefulSets rely on this).</details>
+<details><summary>Q17. What silently breaks if a Service's selector doesn't match any Pod labels?</summary>The Service creates successfully but has zero Endpoints — traffic goes nowhere, no error is raised.</details>
+
+### 1.5 — ConfigMap / Secret
+
+<details><summary>Q18. `data` vs `stringData` in a Secret — what's the difference?</summary><code>data</code> values must be pre-base64-encoded by you; <code>stringData</code> takes plaintext and the API server encodes it on write.</details>
+<details><summary>Q19. Is base64 encryption?</summary>No — it's just encoding. Anyone with read access can trivially decode it.</details>
+<details><summary>Q20. Name the three ways a ConfigMap's data can reach a container.</summary><code>envFrom</code> (bulk env vars), <code>env[].valueFrom.configMapKeyRef</code> (single env var), or mounted as a file via <code>volumes</code>+<code>volumeMounts</code>.</details>
+
+### 1.6 — Ingress
+
+<details><summary>Q21. What's the nesting path from Ingress spec down to a Service port?</summary><code>spec.rules[].host → http.paths[] → path/pathType → backend.service.name + port.number</code></details>
+<details><summary>Q22. Ingress resource vs Ingress Controller — what's the difference?</summary">The resource is just a declared routing rule (inert alone); the Controller is the running software (nginx, Traefik, ALB) that actually implements it.</details>
+<details><summary>Q23. `Prefix` vs `Exact` pathType — explain the difference.</summary><code>Exact</code> matches the literal path only; <code>Prefix</code> matches on path segments, so <code>/api</code> also matches <code>/api/anything</code>.</details>
+
+### 1.7 — Storage
+
+<details><summary>Q24. Recite the storage chain from provisioning to Pod.</summary>StorageClass → dynamic provisioning → PersistentVolume → PersistentVolumeClaim → Pod</details>
+<details><summary>Q25. What field in a Pod references a PVC?</summary><code>spec.volumes[].persistentVolumeClaim.claimName</code></details>
+<details><summary>Q26. What StatefulSet field replaces a plain PVC reference, and why?</summary><code>volumeClaimTemplates</code> — because each replica needs its own uniquely-named PVC, not a shared one.</details>
+
+### 1.8 — RBAC
+
+<details><summary>Q27. State the WHO / WHAT / CONNECT model.</summary>WHO=ServiceAccount, WHAT=Role/ClusterRole, CONNECT=RoleBinding/ClusterRoleBinding</details>
+<details><summary>Q28. Can a RoleBinding reference a ClusterRole? Why would you do that?</summary">Yes — to reuse one set of permissions (defined once as a ClusterRole) but grant it scoped to a single namespace via a namespaced RoleBinding.</details>
+<details><summary>Q29. What are the four fields inside an RBAC `rules[]` entry?</summary><code>apiGroups</code>, <code>resources</code>, <code>verbs</code> (and optionally <code>resourceNames</code>)</details>
+
+### 1.9 — NetworkPolicy
+
+<details><summary>Q30. What does an empty `podSelector: {}` mean?</summary>Applies to all Pods in the namespace.</details>
+<details><summary>Q31. How do you write a "default deny all ingress" policy?</summary><code>podSelector: {}</code>, <code>policyTypes: [Ingress]</code>, and no <code>ingress</code> rules (or an empty list) — no rule ever matches, so nothing is allowed in.</details>
+
+### 1.10 — Probes, Security, Scheduling, Scaling
+
+<details><summary>Q32. Order the three probe types by "boot → serve → survive."</summary>startupProbe → readinessProbe → livenessProbe</details>
+<details><summary>Q33. Which probe controls whether a Pod receives Service traffic?</summary>readinessProbe</details>
+<details><summary>Q34. Pod-level vs container-level securityContext — what's the rule of thumb?</summary>Identity defaults (runAsUser, fsGroup) at Pod level; container-only knobs (capabilities, readOnlyRootFilesystem, allowPrivilegeEscalation) at container level.</details>
+<details><summary>Q35. `taint` vs `toleration` — who "wins"?</summary">A taint on a node repels Pods by default; a matching toleration on a Pod cancels that repulsion for that Pod specifically.</details>
+<details><summary>Q36. What must a Deployment already declare for CPU-based HPA to work?</summary><code>resources.requests.cpu</code> — HPA computes utilization as a percentage of the request.</details>
+<details><summary>Q37. What field does HPA use to find its target — a selector or something else?</summary><code>scaleTargetRef</code> (kind+name), not a label selector.</details>
+
+---
+
+## 2. Broken-YAML Debugging Set
+
+Ten manifests, each with 2–6 real bugs (syntax, indentation, wrong field location, mismatched selectors, deprecated API, invalid values). Find them all before expanding the answer.
+
+### Debug 1 — Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+    containers:
+      - name: web
+        image: nginx:1.27
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+          cpu: 100m
+          memory: 128Mi
+```
+
+<details><summary>Answer</summary>
+
+1. `template.metadata.labels.app: webapp` ≠ `selector.matchLabels.app: web` → object rejected at creation. Fix: make them match.
+2. `containers:` is indented at the same level as `spec:` under template — should be indented one level *into* `spec:` (`spec:\n  containers:`).
+3. `cpu: 100m` is indented as a sibling of `requests:` instead of a child — should be nested under `requests:`.
+4. (Minor but worth flagging) No `limits` block — not a hard error, but a production-readiness gap.
+</details>
+
+### Debug 2 — Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+spec:
+  selector:
+    app: web-app
+  ports:
+    - port: 80
+    targetPort: 80
+```
+
+<details><summary>Answer</summary>
+
+1. `targetPort` is indented as a sibling of the ports list item instead of a child of it — should be nested under the same `- port: 80` entry.
+2. `selector.app: web-app` likely doesn't match the Pods' actual label (`app: web`, per Debug 1) — silently zero endpoints. Verify against the real Pod labels.
+</details>
+
+### Debug 3 — ConfigMap + env injection
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  - APP_ENV: production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  containers:
+    - name: app
+      image: app:1.0
+      envFrom:
+        - configMapRef: app-config
+```
+
+<details><summary>Answer</summary>
+
+1. `data:` is a map, not a list — remove the leading `-`. Should be `data:\n  APP_ENV: production`.
+2. `containers` is placed directly under `Deployment.spec` — missing `selector` and `template` entirely; a Deployment cannot have `containers` directly under `spec`.
+3. `configMapRef: app-config` should be `configMapRef:\n    name: app-config` — it needs a `name` key, not a bare string.
+</details>
+
+### Debug 4 — PVC + Pod
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-pvc
+spec:
+  accessMode: ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db
+spec:
+  containers:
+    - name: db
+      image: postgres:16
+      volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        name: data-pvc
+```
+
+<details><summary>Answer</summary>
+
+1. `accessMode` should be `accessModes` (plural) and its value must be a list: `accessModes: ["ReadWriteOnce"]`.
+2. `volumes[].persistentVolumeClaim` needs the key `claimName`, not `name`: `persistentVolumeClaim:\n    claimName: data-pvc`.
+</details>
+
+### Debug 5 — Ingress
+
+```yaml
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: web
+spec:
+  rules:
+    - host: web.example.com
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: web-svc
+              servicePort: 80
+```
+
+<details><summary>Answer</summary>
+
+1. `apiVersion: extensions/v1beta1` is deprecated/removed — should be `networking.k8s.io/v1`.
+2. `pathType` is missing — required in `networking.k8s.io/v1` (must be `Exact`, `Prefix`, or `ImplementationSpecific`).
+3. `backend.serviceName`/`servicePort` is the old v1beta1 shape — in `networking.k8s.io/v1` it's `backend.service.name` and `backend.service.port.number`.
+</details>
+
+### Debug 6 — RBAC
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: default
+rules:
+  - apiGroups: core
+    resources: pods
+    verbs: get, list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bind-pod-reader
+subjects:
+  - kind: ServiceAccount
+    name: app-sa
+roleRef:
+  kind: Role
+  name: pod-reader
+```
+
+<details><summary>Answer</summary>
+
+1. `apiGroups: core` is wrong — the core API group is represented as an empty string: `apiGroups: [""]`.
+2. `resources: pods` and `verbs: get, list` must be lists: `resources: ["pods"]`, `verbs: ["get", "list"]`.
+3. `subjects[].namespace` is missing for the ServiceAccount — required to disambiguate which namespace's SA is meant.
+4. `roleRef` is missing `apiGroup: rbac.authorization.k8s.io` — required field.
+5. `RoleBinding.metadata.namespace` is missing — a RoleBinding must live in the same namespace as the Role it references (here, `default`).
+</details>
+
+### Debug 7 — NetworkPolicy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend
+spec:
+  podSelector:
+    app: backend
+  ingress:
+    - from:
+        - podSelector:
+            app: frontend
+      port: 8080
+```
+
+<details><summary>Answer</summary>
+
+1. `spec.podSelector` needs a `matchLabels` key — it's not a bare label map: `podSelector:\n    matchLabels:\n      app: backend`.
+2. Same issue inside `from[].podSelector` — needs `matchLabels`.
+3. `policyTypes: [Ingress]` is missing entirely — without it, behavior is ambiguous/implicit and best practice requires declaring it explicitly.
+4. `port: 8080` should be `ports:\n    - port: 8080` (list, plural key, and typically includes `protocol`).
+</details>
+
+### Debug 8 — HPA
+
+```yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app-hpa
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: app
+  minReplicas: 10
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+```
+
+<details><summary>Answer</summary>
+
+1. `minReplicas: 10` > `maxReplicas: 3` — logically invalid, min must be ≤ max.
+2. `scaleTargetRef` is missing `apiVersion: apps/v1`.
+3. Using `autoscaling/v1` with `targetCPUUtilizationPercentage` works, but it's the old shape — modern manifests should use `autoscaling/v2` with a `metrics[]` list for multi-metric and custom-metric support.
+</details>
+
+### Debug 9 — StatefulSet
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+        - name: db
+          image: postgres:16
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+```
+
+<details><summary>Answer</summary>
+
+1. `spec.serviceName` is missing entirely — **required** for StatefulSet; must point at a headless Service that governs the network identity of the Pods.
+</details>
+
+### Debug 10 — CronJob
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: 0 2 * * *
+  jobTemplate:
+    metadata:
+      labels:
+        app: backup
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: backup
+          image: backup:1.0
+```
+
+<details><summary>Answer</summary>
+
+1. `schedule: 0 2 * * *` should be quoted: `schedule: "0 2 * * *"` — unquoted, YAML may misparse the cron string.
+2. `jobTemplate.spec` is missing the nested `template:` layer — should be `jobTemplate.spec.template.spec.containers`, not `jobTemplate.spec.containers` directly. CronJob → Job spec → Pod template → Pod spec is three layers.
+3. `restartPolicy: Always` is invalid inside a Job/CronJob Pod template — must be `Never` or `OnFailure`.
+</details>
+
+---
+
+## 3. The 100 Progressive Writing Challenges
+
+No answers provided here on purpose — write each one from memory, then bring it to chat for grading. Track your score per category in the tracking sheet (Section 5).
+
+### Tier 1 — Easy (1–20): single resources, minimal fields
+1. A Pod running `redis:7`.
+2. A Pod with two containers: `nginx` and a `busybox` sidecar running `sleep 3600`.
+3. A ConfigMap with three literal key/value pairs.
+4. A Secret (using `stringData`) holding a `password` key.
+5. A Namespace called `dev`.
+6. A ServiceAccount called `ci-bot`.
+7. A Pod that sets `restartPolicy: Never`.
+8. A Deployment with 1 replica running `httpd:2.4`.
+9. A Service of type `ClusterIP` exposing port 80 → targetPort 8080.
+10. A Pod with a single env var set directly (not from ConfigMap/Secret).
+11. A Pod with `command` and `args` overriding the image entrypoint.
+12. A Deployment with `replicas: 5`.
+13. A Service of type `NodePort`.
+14. A ConfigMap containing one multi-line file under a key.
+15. A Pod with a `livenessProbe` using `httpGet`.
+16. A Job that runs a single container to completion, `restartPolicy: Never`.
+17. A Pod with `resources.requests` for cpu and memory (no limits).
+18. A Pod with a label `tier: frontend`.
+19. A Deployment with an annotation `owner: platform-team`.
+20. A headless Service (`clusterIP: None`).
+
+### Tier 2 — Medium (21–45): multi-field, multi-resource
+21. Deployment + Service pair for an app called `catalog`, container port 3000, service port 80.
+22. ConfigMap consumed via `envFrom` in a Deployment.
+23. Secret consumed via a single `env[].valueFrom.secretKeyRef`.
+24. ConfigMap mounted as a volume at `/etc/config`.
+25. Deployment with both `readinessProbe` and `livenessProbe` (`tcpSocket`).
+26. Deployment with `resources.requests` AND `limits` set for cpu/memory.
+27. PVC requesting 5Gi `ReadWriteOnce`, referencing StorageClass `standard`.
+28. Pod mounting that PVC at `/data`.
+29. Ingress routing `shop.example.com/` to a Service `shop-svc:80`.
+30. Ingress with two paths (`/api` and `/`) to two different Services.
+31. Role + RoleBinding granting a ServiceAccount `get`/`list` on `pods`.
+32. NetworkPolicy allowing ingress only from Pods labeled `role: frontend`.
+33. Deployment with `strategy.rollingUpdate.maxSurge: 1`, `maxUnavailable: 0`.
+34. DaemonSet running a log-shipper container on every node.
+35. Job with `completions: 5`, `parallelism: 2`.
+36. CronJob running every 6 hours, `restartPolicy: OnFailure`.
+37. Deployment with `nodeSelector` pinning to `disktype: ssd`.
+38. Deployment with a `toleration` for taint `key=dedicated,value=batch,effect=NoSchedule`.
+39. HPA scaling a Deployment `web` between 2 and 8 replicas on 60% CPU.
+40. StatefulSet with 3 replicas and a `volumeClaimTemplates` entry for 10Gi.
+41. Headless Service + StatefulSet pair (`serviceName` wired correctly).
+42. Pod with `securityContext.runAsNonRoot: true` at Pod level.
+43. Container with `securityContext.readOnlyRootFilesystem: true` and dropped `ALL` capabilities.
+44. Deployment using `podAntiAffinity` to spread replicas across nodes.
+45. ResourceQuota capping a namespace to 4 CPU / 8Gi memory requests.
+
+### Tier 3 — Hard (46–70): combined, realistic mini-stacks
+46. Full stack: ConfigMap + Secret + Deployment consuming both + Service.
+47. Ingress with TLS (`tls[].secretName`) for two hosts.
+48. NetworkPolicy: default-deny-all ingress in a namespace, then a second policy allowing only from `namespace: ingress-nginx`.
+49. Deployment with `initContainers` that waits for a dependency (e.g., `nc`-checks a DB port) before the main container starts.
+50. StatefulSet for a 3-node etcd-like cluster with per-Pod PVCs and a headless Service.
+51. RBAC: ClusterRole for reading `nodes` + ClusterRoleBinding to a ServiceAccount.
+52. RBAC: Role reused across two namespaces via two separate RoleBindings (same Role name assumed to exist in both, or via ClusterRole+RoleBinding pattern).
+53. CronJob that mounts a Secret for DB credentials and a PVC for output files.
+54. HPA using a **custom metric** (`Pods` type) instead of CPU.
+55. LimitRange defaulting requests/limits for a namespace with no explicit per-Pod values.
+56. PodDisruptionBudget ensuring `minAvailable: 2` for an app labeled `app: checkout`.
+57. Deployment with `topologySpreadConstraints` spreading across zones.
+58. Deployment + Service + Ingress + HPA for a public web app, written as one file with `---` separators.
+59. Job with `activeDeadlineSeconds` and `ttlSecondsAfterFinished` for automatic cleanup.
+60. Two Deployments + one NetworkPolicy restricting `frontend` → `backend` on port 8080 only.
+61. Secret of type `kubernetes.io/dockerconfigjson` referenced via `imagePullSecrets` in a Deployment.
+62. Deployment using `lifecycle.preStop` to sleep before shutdown (graceful drain).
+63. StatefulSet with `podManagementPolicy: Parallel`.
+64. Deployment with `startupProbe`, `readinessProbe`, and `livenessProbe` all configured differently.
+65. ServiceAccount + Role + RoleBinding, then the SA wired into a Pod via `serviceAccountName`.
+66. PriorityClass + a Deployment referencing it via `priorityClassName`.
+67. Ingress with a default backend (no host match) alongside two host-based rules.
+68. ConfigMap holding an nginx.conf, mounted into an nginx sidecar container specifically (not the main container).
+69. Multi-container Pod where container A writes to an `emptyDir` and container B reads from it.
+70. StorageClass with `volumeBindingMode: WaitForFirstConsumer` + a PVC that uses it.
+
+### Tier 4 — Advanced (71–90): production patterns
+71. Full production Deployment: probes, resources, both securityContext levels, rollingUpdate strategy, podAntiAffinity — from scratch.
+72. Blue/green-style setup: two Deployments (`app-blue`, `app-green`) and one Service whose selector you can flip between them.
+73. Canary pattern: two Deployments sharing a base label but different `track` labels, one Service selecting only the base label, uneven replica counts.
+74. Full RBAC least-privilege set for a CI ServiceAccount: create/get/list on `deployments` and `pods` only, namespaced.
+75. NetworkPolicy suite: default-deny-all (ingress+egress), then explicit allows for DNS egress, same-namespace ingress, and one external API egress via `ipBlock`.
+76. StatefulSet + headless Service + PodDisruptionBudget + resource limits, complete DB stack.
+77. CronJob backup pipeline: Secret for creds, PVC for staging, `ttlSecondsAfterFinished`, `concurrencyPolicy: Forbid`.
+78. HPA with both CPU and memory metrics plus `behavior.scaleDown.stabilizationWindowSeconds`.
+79. Ingress with rate-limiting/annotations (controller-specific annotations under `metadata.annotations`) plus TLS.
+80. Deployment using `envFrom` for two ConfigMaps and one Secret simultaneously, with one field overridden individually via `env`.
+81. Multi-tenant namespace setup: Namespace + ResourceQuota + LimitRange + default-deny NetworkPolicy, all for one team.
+82. Job matrix pattern: one CronJob template producing several parallel Jobs via `parallelism` + `completions` + indexed completion mode (`completionMode: Indexed`).
+83. Full GitOps-ready app: Namespace, ServiceAccount, ConfigMap, Secret ref (not literal), Deployment, Service, Ingress, HPA, PDB, NetworkPolicy — one file, correct order.
+84. Sidecar proxy pattern: main app container + sidecar container sharing a Pod, sidecar handles TLS termination on a different port, both exposed via one Service with named ports.
+85. StatefulSet with an `initContainer` that runs a one-time schema migration before the main DB container starts.
+86. Affinity: a Deployment that must (`requiredDuringScheduling`) run on nodes labeled `gpu: "true"` and prefers (`preferredDuringScheduling`) zone `us-east-1a`.
+87. Deployment with `securityContext.seccompProfile.type: RuntimeDefault` and `capabilities.add: ["NET_BIND_SERVICE"]` for binding to port 80 as non-root.
+88. Full ingress-to-storage chain: Ingress → Service → StatefulSet → volumeClaimTemplates → StorageClass, all six resources.
+89. ClusterRole + ClusterRoleBinding scoped via `aggregationRule` (label-based role aggregation).
+90. A NetworkPolicy allowing egress only to a specific external CIDR block for a Pod that calls a third-party API.
+
+### Tier 5 — Production/Architecture (91–100): design + implement
+91. Given: "3-tier web app — public Ingress, internal API Service, internal-only Postgres StatefulSet." Design the resource list, then write it all.
+92. Given: "Batch pipeline — nightly extraction Job, hourly transform CronJob, results written to PVC, notify via webhook using a Secret token." Design + implement.
+93. Given: "Multi-team cluster — Team A and Team B each get their own namespace, quota, and network isolation from each other." Design + implement.
+94. Given: "Autoscaling checkout service, 3–15 replicas, must not go below 2 available during any voluntary disruption, spread across 3 zones." Design + implement.
+95. Given: "Internal admin tool — only reachable from a specific CI/CD ServiceAccount via port-forward, RBAC restricted to read-only on its own namespace." Design + implement.
+96. Given: "Legacy app needs a sidecar to expose Prometheus metrics on a separate port without modifying the main container image." Design + implement.
+97. Given: "Zero-downtime deploys required, rollback must be possible to the last 5 revisions, deploy must fail fast if health checks don't pass within 2 minutes." Design + implement.
+98. Given: "Secrets must never appear as plain env vars in `kubectl describe pod` output." Design + implement (hint: volume mount vs env).
+99. Given: "A stateful cache cluster needs stable hostnames or clients break; storage does not need to persist across Pod restarts." Design + implement (trick question — is StatefulSet's persistent storage actually required here?).
+100. Given: "Full production onboarding for a new microservice: apply your own checklist end-to-end (config, secrets, networking, scaling, security, availability) and produce every manifest, in dependency order." The capstone — treat this as your final take-home.
+
+---
+
+## 4. Scenario-Based Design Exercises (30)
+
+For each, answer **before writing YAML**: which resources are required, why, and in what dependency order. Then implement.
+
+1. Deploy a stateless web application.
+2. Deploy an API that needs both a ConfigMap and a Secret.
+3. Expose an application internally only (no internet access).
+4. Expose an application publicly through Ingress with TLS.
+5. Deploy PostgreSQL with persistent storage.
+6. Run a scheduled nightly database backup.
+7. Run one monitoring agent Pod on every node.
+8. Restrict traffic so namespace A cannot reach namespace B.
+9. Give an application read-only permission to ConfigMaps in its own namespace.
+10. Autoscale an application based on CPU utilization.
+11. Autoscale an application based on requests-per-second (custom metric).
+12. Guarantee an application never drops below 3 available replicas during node maintenance.
+13. Run a one-time database schema migration before a new app version goes live.
+14. Deploy a Redis cache that doesn't need to survive Pod restarts.
+15. Deploy a message queue (e.g. RabbitMQ) that DOES need to survive restarts, with stable identity.
+16. Prevent a namespace from consuming more than 10 CPU cores total.
+17. Set sane default resource requests/limits for a namespace where developers often forget to set them.
+18. Give a CI/CD pipeline permission to create and update Deployments, but nothing else.
+19. Isolate a payments service so only the checkout service can talk to it, on one specific port.
+20. Roll out a new version with zero downtime and automatic rollback if health checks fail.
+21. Run a GPU workload only on GPU-labeled nodes, and keep non-GPU workloads off those nodes.
+22. Spread a critical service's replicas across 3 availability zones evenly.
+23. Store TLS certificates for an Ingress securely and reference them without hardcoding.
+24. Let a Pod pull images from a private container registry.
+25. Give an application a stable DNS name reachable by other Pods.
+26. Prevent a low-priority batch job from evicting a high-priority production service.
+27. Clean up completed Job Pods automatically after 1 hour.
+28. Ensure two replicas of an app are never scheduled on the same node.
+29. Let one service call another service's API using its cluster-internal DNS name (no Ingress involved).
+30. Build a complete environment: dev namespace, quota, default-deny network policy, one sample app fully wired end-to-end (config, secret, deploy, service, ingress, HPA, RBAC).
+
+---
+
+## 5. Spaced Repetition Tracking
+
+Use this log every time you attempt a challenge, debug set, or scenario. Re-test anything marked ❌ on the schedule below; anything ✅ twice in a row on schedule graduates.
+
+**Schedule:** Day 1 → Day 2 → Day 4 → Day 7 → Day 14 → Day 30 → Day 60 → Day 90
+
+### Tracking sheet template
+
+| Item # / Name | First attempt date | Result (✅/❌) | Weak area | Next review date | Review 2 result | Graduated? |
+|---|---|---|---|---|---|---|
+| Tier1 #8 Deployment | | | | | | |
+| Debug #6 RBAC | | | | | | |
+| Scenario #15 StatefulSet | | | | | | |
+
+Copy this table into your own notes (or a spreadsheet) and log every attempt. Rules:
+- **❌ on first attempt** → review on Day 1, Day 2, Day 4 (short interval — you clearly don't have it yet).
+- **✅ on first attempt but slow/unsure** → review on Day 4, Day 14.
+- **✅ confidently and fast** → review on Day 14, Day 60 (light maintenance only).
+- Anything that fails on a *later* review (e.g. you got Day 7 wrong after passing Day 2) resets its interval back to Day 1.
+
+When you come back to chat and tell me "it's day 4 for X, quiz me," I'll pull a fresh variant of that exercise (not the identical one) so you're recalling the *pattern*, not the specific answer.
+
+---
+
+## 6. Interview Question Bank
+
+### Beginner (structure & fundamentals)
+1. What are the four top-level fields every Kubernetes manifest has?
+2. What's the difference between a Pod and a Deployment?
+3. What does `kind` determine?
+4. Where do you put a container's environment variables?
+5. What's the difference between `requests` and `limits`?
+6. What does a Service do?
+7. What's the difference between `port` and `targetPort`?
+8. What is a ConfigMap used for?
+9. Is a Secret's data encrypted by default?
+10. What command validates a manifest without applying it?
+11. What field connects a Deployment to the Pods it manages?
+12. What happens if you delete a Pod that's managed by a Deployment?
+13. What's the default namespace if none is specified?
+14. What does `kubectl explain` do?
+15. Name the three Service types besides ExternalName.
+
+### Intermediate
+16. Why must `selector.matchLabels` match `template.metadata.labels` in a Deployment?
+17. Explain `maxUnavailable` vs `maxSurge` during a rolling update.
+18. What's the difference between `livenessProbe` and `readinessProbe`, and what does each control?
+19. How does an application consume a ConfigMap as a mounted file vs an environment variable? What's the trade-off?
+20. What is a headless Service, and when is it needed?
+21. Explain the relationship between StorageClass, PV, and PVC.
+22. What's the difference between a Role and a ClusterRole?
+23. Why does a Job's Pod template require `restartPolicy: Never` or `OnFailure`?
+24. What does `nodeSelector` do, and how is it different from `affinity`?
+25. How would you debug a Service that has no traffic reaching its Pods?
+26. What's the purpose of `initContainers`?
+27. Explain `ingressClassName` and why it's needed in multi-controller clusters.
+28. What does `clusterIP: None` do?
+29. How do `podSelector`, `ingress.from`, and `ports` work together in a NetworkPolicy?
+30. What's the difference between `env` and `envFrom`?
+
+### Advanced
+31. Walk through what happens end-to-end when you `kubectl apply` a Deployment for the first time (API server → controller manager → scheduler → kubelet).
+32. Why does StatefulSet require a headless Service, and what specifically breaks without it?
+33. Explain `volumeClaimTemplates` and how PVC naming works for StatefulSet replicas.
+34. Design an HPA config using a custom metric instead of CPU/memory — what has to exist for this to work?
+35. Explain the difference between `RoleBinding` referencing a `Role` vs a `RoleBinding` referencing a `ClusterRole`.
+36. What's the effect of `podAntiAffinity` with `requiredDuringSchedulingIgnoredDuringExecution` vs `preferred...`?
+37. How do taints and tolerations differ from node affinity, conceptually?
+38. Explain `topologySpreadConstraints` and `maxSkew`.
+39. What's the purpose of a PodDisruptionBudget, and what's the difference between voluntary and involuntary disruption?
+40. How would you structure NetworkPolicies for a default-deny cluster with per-service allow rules?
+
+### Senior DevOps
+41. Design a zero-downtime deployment strategy for a stateless service with strict SLA requirements. What manifests and fields matter most?
+42. How do you handle secret rotation for a running Deployment without redeploying application code?
+43. What's your strategy for right-sizing `resources.requests`/`limits` across a large fleet of services?
+44. Explain `revisionHistoryLimit` and `progressDeadlineSeconds` and how they factor into an incident response runbook.
+45. How would you design RBAC for a multi-tenant cluster shared by five teams?
+46. What's the failure mode if `readinessProbe` is misconfigured too aggressively (e.g., 1-second timeout on a slow endpoint) in a high-traffic rolling update?
+47. How do you prevent a bad CronJob from silently piling up failed/orphaned Jobs over months?
+48. Explain how `PriorityClass` interacts with the scheduler and eviction during resource pressure.
+49. Design a namespace-isolation strategy combining ResourceQuota, LimitRange, and NetworkPolicy.
+50. Walk through debugging a production Pod stuck in `CrashLoopBackOff` using only `kubectl` — what do you check and in what order?
+
+### Senior Platform Engineer
+51. Design a self-service platform where application teams can only deploy within guardrails you define (resource limits, allowed image registries, mandatory probes). What Kubernetes-native and policy-engine mechanisms would you use?
+52. How would you evolve a cluster from `PodSecurityPolicy` (deprecated) to `Pod Security Admission` / an external policy engine?
+53. Explain trade-offs between StatefulSet-managed storage vs an external managed database service for stateful workloads.
+54. Design a blue/green and a canary deployment strategy using only native Kubernetes primitives (no service mesh) — what are the limitations?
+55. How do you structure a GitOps repo layout so that `apiVersion` deprecations across cluster upgrades don't silently break applies?
+56. What's your approach to validating manifests in CI before they ever reach a cluster (schema validation, policy checks, dry-run)?
+57. Explain how `volumeBindingMode: WaitForFirstConsumer` affects multi-zone clusters and why `Immediate` can cause scheduling failures.
+58. Design cross-namespace communication policy for a shared platform service (e.g., internal logging API) that every team's namespace needs to reach, without allowing lateral movement between team namespaces.
+59. How would you design HPA + Cluster Autoscaler interaction so scale-up events don't stall on pending Pods?
+60. Walk through your incident checklist for "the cluster's control plane API is slow/unresponsive" — what do you check, and how does that differ from a workload-level incident?
+
+---
+
+## 7. Final Mastery Exam (structure — taken live in chat)
+
+When you're ready, tell me and I'll run this as a timed or untimed session, one section at a time, and grade as you go.
+
+- **Section A — Identify the resource:** given a requirement in plain English, name the correct Kubernetes resource(s), no YAML yet.
+- **Section B — Complete missing YAML:** partially-filled manifests with blanks to fill in from memory.
+- **Section C — Fix broken YAML:** fresh broken manifests (not from Section 2 above) — find and fix every bug.
+- **Section D — Write YAML from requirements:** structured requirement blocks like Part 32 in the reference doc, written cold.
+- **Section E — Design multiple manifests:** a scenario requiring 4–8 resources, dependency order, and full implementation.
+- **Section F — Debug a "production" manifest:** a large multi-resource file with subtle bugs mixed among correct sections.
+- **Section G — Architecture → resources → YAML:** given a system diagram description, produce the entire resource set end-to-end.
+
+At the end I'll score each section, identify your weakest 2–3 areas, and generate a personalized revision plan mapped onto the Day 1/2/4/7/14/30/60/90 schedule from Section 5.
+
+---
+
+## Suggested order to actually do this in
+
+1. Active Recall Bank (Section 1) — confirm structural fluency first.
+2. Debug Set (Section 2) — train your eye for what's *wrong*.
+3. Tier 1–2 writing challenges (Section 3) — build fluency on single/paired resources.
+4. Scenarios 1–15 (Section 4) — practice deciding *what* to build, not just *how*.
+5. Tier 3–4 challenges + Scenarios 16–30 — combine everything.
+6. Tier 5 challenges — capstones.
+7. Interview bank — sanity-check verbal explanations, not just YAML recall.
+8. Final Mastery Exam — whenever you feel ready, not on a fixed day count.
+
+Bring your answers back here in chat, section by section — I'll grade, correct, and log what goes on the spaced-repetition schedule.
